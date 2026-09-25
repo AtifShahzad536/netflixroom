@@ -4,19 +4,19 @@
   "routes": [
     {
       "src": "/logo.png",
-      "dest": "/backend/public/logo.png"
+      "dest": "/public/logo.png"
     },
     {
       "src": "/netflixroom-extension.zip",
-      "dest": "/backend/public/netflixroom-extension.zip"
+      "dest": "/public/netflixroom-extension.zip"
     },
     {
       "src": "/api/(.*)",
-      "dest": "/backend/src/server.js"
+      "dest": "/src/server.js"
     },
     {
       "src": "/(.*)",
-      "dest": "/backend/public/$1"
+      "dest": "/public/$1"
     }
   ]
 }
