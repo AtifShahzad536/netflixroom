@@ -284,9 +284,7 @@
       margin-bottom: 50px;
     }
 
-    /* ==========================================================================
-       CINEMATIC HERO DESKTOP BROWSER + SIDEPANEL SHOWCASE
-       ========================================================================== */
+    /* Cinema Showcase Frame */
     .cinema-showcase-frame {
       max-width: 1120px;
       margin: 0 auto;
@@ -350,7 +348,6 @@
       color: #10b981;
     }
 
-    /* Cinema Split: Left Video Stream, Right Side Panel */
     .cinema-viewport {
       display: grid;
       grid-template-columns: 1fr 340px;
@@ -399,7 +396,6 @@
       gap: 6px;
     }
 
-    /* Center Play Indicator Overlay */
     .center-hud-overlay {
       align-self: center;
       background: rgba(0, 0, 0, 0.65);
@@ -432,7 +428,6 @@
       gap: 4px;
     }
 
-    /* Netflix Player Bottom Controls */
     .netflix-controls-bar {
       background: rgba(10, 12, 18, 0.85);
       backdrop-filter: blur(10px);
@@ -575,7 +570,6 @@
       overflow-y: auto;
     }
 
-    /* Chat Messages Simulation */
     .chat-bubble {
       padding: 8px 10px;
       font-size: 0.75rem;
@@ -599,7 +593,6 @@
       color: #94a3b8;
     }
 
-    /* Sticker Simulation Card in Chat */
     .sticker-chat-card {
       background: linear-gradient(135deg, rgba(229,9,20,0.25), rgba(0,0,0,0.6));
       border: 1px solid rgba(229,9,20,0.45);
@@ -616,7 +609,6 @@
       color: #fde047;
     }
 
-    /* Voice Grid simulation */
     .voice-avatar-item {
       display: flex;
       align-items: center;
@@ -651,7 +643,112 @@
     }
 
     /* ==========================================================================
-       FEATURES SHOWCASE GRID
+       HOW TO CREATE & JOIN SECTION
+       ========================================================================== */
+    .how-to-section {
+      padding: 90px 0;
+      background: rgba(14, 16, 23, 0.5);
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .role-toggle-wrap {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 45px;
+    }
+
+    .role-btn {
+      padding: 12px 24px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      background: #11141e;
+      border: 1px solid #272b3a;
+      color: #94a3b8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+
+    .role-btn.active {
+      background: #E50914;
+      border-color: #E50914;
+      color: #fff;
+      box-shadow: 0 4px 18px rgba(229, 9, 20, 0.4);
+    }
+
+    .guide-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    .guide-step-card {
+      background: #10121a;
+      border: 1px solid #242838;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      position: relative;
+      transition: all 0.25s ease;
+    }
+
+    .guide-step-card:hover {
+      border-color: #E50914;
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+    }
+
+    .guide-step-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 4px 10px;
+      background: rgba(229, 9, 20, 0.1);
+      border: 1px solid rgba(229, 9, 20, 0.3);
+      color: #ff4d58;
+      width: fit-content;
+    }
+
+    .guide-step-card h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .guide-step-card p {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      line-height: 1.65;
+    }
+
+    .guide-mock-box {
+      background: #08090d;
+      border: 1px solid #222634;
+      padding: 14px;
+      margin-top: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .guide-mock-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.78rem;
+    }
+
+    /* ==========================================================================
+       FEATURES SECTION
        ========================================================================== */
     .section {
       padding: 90px 0;
@@ -729,9 +826,7 @@
       line-height: 1.65;
     }
 
-    /* ==========================================================================
-       INTERACTIVE STICKERS SHOWCASE
-       ========================================================================== */
+    /* Stickers Showcase Grid */
     .stickers-showcase-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -874,7 +969,7 @@
       </a>
 
       <ul class="nav-links">
-        <li><a href="#demo">Live Demo</a></li>
+        <li><a href="#how-to">How It Works</a></li>
         <li><a href="#features">Features</a></li>
         <li><a href="#voice">Voice DSP</a></li>
         <li><a href="#stickers">Stickers</a></li>
@@ -914,16 +1009,13 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
             View on GitHub
           </a>
-          <a href="#install" class="btn btn-secondary btn-lg rounded-box">
-            <i data-lucide="book-open"></i> 30-Sec Install Guide
+          <a href="#how-to" class="btn btn-secondary btn-lg rounded-box">
+            <i data-lucide="play-circle"></i> How It Works
           </a>
         </div>
 
-        <!-- =================================================================
-             CINEMATIC BROWSER + SIDEPANEL SHOWCASE (HEAVY WORK UI)
-             ================================================================= -->
-        <div class="cinema-showcase-frame rounded-box" id="demo">
-          <!-- Browser Top Frame -->
+        <!-- Cinema Showcase Frame -->
+        <div class="cinema-showcase-frame rounded-box">
           <div class="browser-top-bar">
             <div class="browser-controls">
               <div class="browser-dots">
@@ -943,11 +1035,10 @@
             </div>
           </div>
 
-          <!-- Cinema Viewport (Netflix Video on Left, Side Panel on Right) -->
+          <!-- Cinema Viewport -->
           <div class="cinema-viewport">
-            <!-- Left: High-Res Netflix Cinema Player -->
+            <!-- Left: Netflix Stream Player -->
             <div class="netflix-player-view">
-              <!-- Top Metadata -->
               <div class="netflix-brand-tag">
                 <div class="netflix-logo-text">NETFLIX</div>
                 <div class="stream-meta-pill rounded-box">
@@ -955,7 +1046,6 @@
                 </div>
               </div>
 
-              <!-- Center Play/Sync Indicator -->
               <div class="center-hud-overlay rounded-box">
                 <i data-lucide="zap"></i>
                 <div class="center-hud-info">
@@ -964,7 +1054,6 @@
                 </div>
               </div>
 
-              <!-- Bottom Netflix Control Bar -->
               <div class="netflix-controls-bar rounded-box">
                 <div class="player-progress-wrap">
                   <div class="player-timeline-bar rounded-box">
@@ -992,9 +1081,8 @@
               </div>
             </div>
 
-            <!-- Right: Exact Extension Side Panel UI -->
+            <!-- Right: Extension Side Panel Simulation -->
             <div class="sidepanel-app-view">
-              <!-- Header -->
               <div class="sidepanel-header">
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span>
@@ -1003,7 +1091,6 @@
                 <span class="badge-status rounded-box" style="font-size: 0.65rem; padding: 2px 6px;">4 Online</span>
               </div>
 
-              <!-- Navigation Tabs -->
               <div class="sidepanel-nav-tabs">
                 <button class="sidepanel-tab-btn active" id="tab-chat-btn" onclick="switchDemoTab('chat')">
                   <i data-lucide="message-square"></i> Chat
@@ -1016,21 +1103,19 @@
                 </button>
               </div>
 
-              <!-- Side Panel Content Area -->
               <div class="sidepanel-content-area" id="demo-tab-content">
                 <!-- Chat View (Default) -->
                 <div id="demo-view-chat" style="display: flex; flex-direction: column; gap: 8px; height: 100%;">
                   <div class="chat-bubble rounded-box">
                     <span class="chat-author">Alex</span>
-                    <span>Bro look at that soundtrack! 🔥</span>
+                    <span>Bro look at that soundtrack!</span>
                   </div>
 
                   <div class="chat-bubble chat-bubble-me rounded-box">
                     <span class="chat-author" style="color: #60a5fa;">You</span>
-                    <span>Wait for the scene after this! 😱</span>
+                    <span>Wait for the scene after this!</span>
                   </div>
 
-                  <!-- Animated Sticker in Chat -->
                   <div class="sticker-chat-card rounded-box">
                     <i data-lucide="popcorn"></i>
                     <div>
@@ -1127,6 +1212,231 @@
       </div>
     </section>
 
+    <!-- =================================================================
+         HOW TO CREATE & JOIN A WATCH PARTY (STEP-BY-STEP GUIDE)
+         ================================================================= -->
+    <section class="how-to-section" id="how-to">
+      <div class="container">
+        <div class="section-title-wrap">
+          <span class="section-badge">Simple & Intuitive Setup</span>
+          <h2 class="section-title">How It Works: Step-by-Step Guide</h2>
+          <p style="color: #94a3b8; font-size: 1rem; margin-top: 8px; max-width: 680px; margin-left: auto; margin-right: auto;">
+            Whether you want to host a watch party or join your friends' existing room, follow these simple steps to get synced in seconds.
+          </p>
+        </div>
+
+        <!-- Role Switcher Tabs -->
+        <div class="role-toggle-wrap">
+          <button class="role-btn rounded-box active" id="role-host-btn" onclick="switchRoleGuide('host')">
+            <i data-lucide="crown"></i> 👑 Host: Create a Party
+          </button>
+          <button class="role-btn rounded-box" id="role-join-btn" onclick="switchRoleGuide('join')">
+            <i data-lucide="users"></i> 👥 Friend: Join Existing Party
+          </button>
+          <button class="role-btn rounded-box" id="role-setup-btn" onclick="switchRoleGuide('setup')">
+            <i data-lucide="puzzle"></i> ⚡ Extension Setup & Pin
+          </button>
+        </div>
+
+        <!-- 1. Host Guide (Create Party) -->
+        <div id="guide-host-view" class="guide-cards-grid">
+          <!-- Host Step 1 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="tv" style="width: 12px; height: 12px;"></i> Step 1</div>
+            <h3>Open Any Netflix Video</h3>
+            <p>Go to <a href="https://www.netflix.com" target="_blank" style="color: #E50914; text-decoration: underline; font-weight: 600;">netflix.com</a> on Chrome, pick any movie or TV series episode, and start video playback.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>Active Netflix Tab:</span>
+                <span style="color: #34d399; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                  <i data-lucide="check" style="width: 12px; height: 12px;"></i> Video Detected
+                </span>
+              </div>
+              <div class="guide-mock-row" style="color: #64748b; font-size: 0.72rem;">
+                <span>URL: netflix.com/watch/...</span>
+                <span>Ready to Host</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Host Step 2 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="plus-circle" style="width: 12px; height: 12px;"></i> Step 2</div>
+            <h3>Open Extension & Click "Create Party"</h3>
+            <p>Click the <strong>Netflix Room</strong> icon from your Chrome toolbar or side panel. Enter your Name and Party Name, then click <strong>"Create Party"</strong>.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row">
+                <span style="color: #cbd5e1; font-weight: 700;">Host Name:</span>
+                <span style="color: #fff; font-weight: 700;">Sarah (Host)</span>
+              </div>
+              <div class="guide-mock-row">
+                <span style="color: #cbd5e1; font-weight: 700;">Party Name:</span>
+                <span style="color: #38bdf8; font-weight: 700;">Friday Movie Night 🎬</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Host Step 3 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="share-2" style="width: 12px; height: 12px;"></i> Step 3</div>
+            <h3>Copy Room Code & Send to Friends</h3>
+            <p>Your unique 6-character Room Code (e.g. <code>WP-8942</code>) is generated instantly. Click to copy the code or 1-Click invite link and share on WhatsApp or Discord.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Party Code:</span>
+                <span style="background: #1f2433; padding: 2px 8px; color: #f87171; font-weight: 800; border-radius: 3px; font-family: monospace;">WP-8942</span>
+              </div>
+              <span style="font-size: 0.7rem; color: #34d399; display: flex; align-items: center; gap: 4px;">
+                <i data-lucide="check" style="width: 12px; height: 12px;"></i> Code copied to clipboard • Send to friends
+              </span>
+            </div>
+          </div>
+
+          <!-- Host Step 4 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="play" style="width: 12px; height: 12px;"></i> Step 4</div>
+            <h3>Watch Together with Voice & Sync</h3>
+            <p>Whenever you play, pause, or seek your Netflix video, all connected friends' screens sync automatically (&lt;300ms). Talk in real-time with WebRTC voice!</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Sync Drift:</span>
+                <span style="color: #34d399; font-weight: 800;">12ms (Ultra Low)</span>
+              </div>
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Voice Status:</span>
+                <span style="color: #38bdf8; font-weight: 700;">Spatial Mesh Connected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Join Guide (Join Existing Party) -->
+        <div id="guide-join-view" class="guide-cards-grid" style="display: none;">
+          <!-- Join Step 1 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="chrome" style="width: 12px; height: 12px;"></i> Step 1</div>
+            <h3>Open Netflix in Google Chrome</h3>
+            <p>Make sure Google Chrome is running on your computer with Netflix loaded and the Netflix Room extension enabled.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>Browser:</span>
+                <span style="color: #fff; font-weight: 600;">Google Chrome / Edge / Brave</span>
+              </div>
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>Extension:</span>
+                <span style="color: #34d399; font-weight: 600;">Active & Pinned</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Join Step 2 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="log-in" style="width: 12px; height: 12px;"></i> Step 2</div>
+            <h3>Open Side Panel & Click "Join Party"</h3>
+            <p>Click the <strong>Netflix Room</strong> icon in your browser toolbar to launch the Side Panel, then select the <strong>"Join an Existing Party"</strong> tab.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row">
+                <span style="color: #cbd5e1;">Action:</span>
+                <span style="color: #E50914; font-weight: 800;">Join Room Mode</span>
+              </div>
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Side Panel:</span>
+                <span style="color: #38bdf8;">Open & Ready</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Join Step 3 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="key-round" style="width: 12px; height: 12px;"></i> Step 3</div>
+            <h3>Enter Room Code & Nickname</h3>
+            <p>Paste the 6-character Code sent by your host (e.g. <code>WP-8942</code>), type your display name, and click <strong>"Enter Party"</strong>.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Party Code:</span>
+                <span style="background: #1f2433; padding: 2px 8px; color: #34d399; font-weight: 800; border-radius: 3px; font-family: monospace;">WP-8942</span>
+              </div>
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Your Nickname:</span>
+                <span style="color: #fff; font-weight: 700;">Alex</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Join Step 4 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="zap" style="width: 12px; height: 12px;"></i> Step 4</div>
+            <h3>Instant Auto-Sync & Voice Connected</h3>
+            <p>Your Netflix video automatically jumps to the host's exact movie and playhead time! You can now voice chat, send animated stickers, and enjoy together.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Playback Sync:</span>
+                <span style="color: #34d399; font-weight: 800;">Locked to Host</span>
+              </div>
+              <div class="guide-mock-row">
+                <span style="color: #94a3b8;">Voice Chat:</span>
+                <span style="color: #10b981; font-weight: 700;">Microphone Active</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Extension Setup & Pin Guide -->
+        <div id="guide-setup-view" class="guide-cards-grid" style="display: none;">
+          <!-- Setup Step 1 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="download" style="width: 12px; height: 12px;"></i> Step 1</div>
+            <h3>Download & Extract ZIP</h3>
+            <p>Click the <strong>"Download Extension (.ZIP)"</strong> button at top. Open your Downloads folder, right click the zip file and choose <strong>"Extract All"</strong>.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>File:</span>
+                <span style="color: #f87171; font-family: monospace; font-weight: 700;">netflixroom-extension.zip</span>
+              </div>
+              <div class="guide-mock-row" style="color: #34d399;">
+                <span>Status:</span>
+                <span>Extracted Folder Ready</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Setup Step 2 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="settings" style="width: 12px; height: 12px;"></i> Step 2</div>
+            <h3>Enable Developer Mode</h3>
+            <p>In Chrome's address bar, type <code>chrome://extensions</code> and press Enter. Turn ON the <strong>"Developer mode"</strong> toggle in the top-right corner.</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>URL:</span>
+                <span style="color: #38bdf8; font-family: monospace;">chrome://extensions</span>
+              </div>
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>Developer mode:</span>
+                <span style="color: #34d399; font-weight: 700;">[ ON ]</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Setup Step 3 -->
+          <div class="guide-step-card rounded-box">
+            <div class="guide-step-badge rounded-box"><i data-lucide="pin" style="width: 12px; height: 12px;"></i> Step 3</div>
+            <h3>Load Unpacked & Pin Extension</h3>
+            <p>Click the <strong>"Load unpacked"</strong> button in top-left, select your extracted folder, then click Chrome's puzzle icon to <strong>Pin Netflix Room</strong> to your toolbar!</p>
+            <div class="guide-mock-box rounded-box">
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>Load Unpacked:</span>
+                <span style="color: #34d399; font-weight: 700;">Selected Folder</span>
+              </div>
+              <div class="guide-mock-row" style="color: #94a3b8;">
+                <span>Toolbar Pin:</span>
+                <span style="color: #E50914; font-weight: 700;">📌 Pinned for 1-Click Access</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Features Section -->
     <section class="section" id="features">
       <div class="container">
@@ -1136,7 +1446,6 @@
         </div>
 
         <div class="features-grid">
-          <!-- Feature 1 -->
           <div class="feature-card rounded-box">
             <div class="feature-icon rounded-box">
               <i data-lucide="zap"></i>
@@ -1145,7 +1454,6 @@
             <p>Smart frame-accurate synchronization (&lt;300ms drift tolerance) with automated loop-prevention flags. When the host plays, pauses, or seeks, everyone's Netflix responds instantly.</p>
           </div>
 
-          <!-- Feature 2 -->
           <div class="feature-card rounded-box" id="voice">
             <div class="feature-icon rounded-box">
               <i data-lucide="mic"></i>
@@ -1154,7 +1462,6 @@
             <p>Cascaded 24dB/octave high-pass filter (260 Hz) completely eliminates laptop mechanical vibrations and keyboard clicks while amplifying crystal-clear human vocal formants.</p>
           </div>
 
-          <!-- Feature 3 -->
           <div class="feature-card rounded-box" id="stickers">
             <div class="feature-icon rounded-box">
               <i data-lucide="sparkles"></i>
@@ -1163,7 +1470,6 @@
             <p>1-Click Quick Reaction bar, categorized searchable emojis, and high-impact watch party badges designed for hype movie moments.</p>
           </div>
 
-          <!-- Feature 4 -->
           <div class="feature-card rounded-box">
             <div class="feature-icon rounded-box">
               <i data-lucide="layout-panel-left"></i>
@@ -1172,7 +1478,6 @@
             <p>Operates cleanly in Chrome's dedicated Side Panel API. Never closes when clicking outside, keeping your chat, presence, and voice controls always visible.</p>
           </div>
 
-          <!-- Feature 5 -->
           <div class="feature-card rounded-box">
             <div class="feature-icon rounded-box">
               <i data-lucide="volume-2"></i>
@@ -1181,7 +1486,6 @@
             <p>Control the total party volume or adjust each friend's audio level individually so loud friends never overpower quiet conversations.</p>
           </div>
 
-          <!-- Feature 6 -->
           <div class="feature-card rounded-box">
             <div class="feature-icon rounded-box">
               <i data-lucide="shield-check"></i>
@@ -1322,6 +1626,26 @@
       const activeView = document.getElementById('demo-view-' + tabName);
       if (activeBtn) activeBtn.classList.add('active');
       if (activeView) activeView.style.display = 'flex';
+    }
+
+    function switchRoleGuide(role) {
+      const roles = ['host', 'join', 'setup'];
+      roles.forEach(r => {
+        const btn = document.getElementById('role-' + r + '-btn');
+        const view = document.getElementById('guide-' + r + '-view');
+        if (btn) btn.classList.remove('active');
+        if (view) view.style.display = 'none';
+      });
+
+      const activeBtn = document.getElementById('role-' + role + '-btn');
+      const activeView = document.getElementById('guide-' + role + '-view');
+      if (activeBtn) activeBtn.classList.add('active');
+      if (activeView) {
+        activeView.style.display = 'grid';
+        if (window.lucide) {
+          lucide.createIcons();
+        }
+      }
     }
   </script>
 </body>
