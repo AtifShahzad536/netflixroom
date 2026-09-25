@@ -1483,8 +1483,72 @@
       // Render Audit Table
       renderAuditTable(data.recentEvents || []);
 
+      // Render Chat Stream
+      renderChatStream(data.recentMessages || []);
+
       // Update Broadcast Target Dropdown
       updateBroadcastOptions(data.rooms || []);
+    }
+
+    function renderChatStream(messages) {
+      const container = document.getElementById('chat-stream-container');
+      if (!container) return;
+
+      if (!messages || messages.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; padding: 40px; border: 1px dashed var(--border-subtle); color: var(--text-muted);">
+            <i data-lucide="message-circle" style="width: 32px; height: 32px; color: var(--text-dark); margin-bottom: 8px;"></i>
+            <h4>No Live Chat Messages Sent Yet</h4>
+            <p style="font-size: 0.8rem; margin-top: 4px;">When users type messages or react with stickers in watch parties, they will stream here in real-time.</p>
+          </div>
+        `;
+        if (window.lucide) lucide.createIcons();
+        return;
+      }
+
+      let html = '';
+      messages.forEach(msg => {
+        const isSystem = msg.type === 'system' || msg.type === 'action' || msg.senderId === 'system' || msg.senderId === 'admin';
+        const isSticker = !!msg.stickerUrl;
+        const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : '';
+
+        if (isSystem) {
+          html += `
+            <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.2); padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="room-code-badge" style="font-size: 0.68rem; padding: 1px 5px;">${msg.partyCode || 'GLOBAL'}</span>
+                <span class="badge badge-blue">⚙️ System</span>
+                <span style="color: #94a3b8; font-style: italic;">${msg.text}</span>
+              </div>
+              <span style="font-family: monospace; font-size: 0.7rem; color: var(--text-dark);">${timeStr}</span>
+            </div>
+          `;
+        } else {
+          html += `
+            <div style="background: var(--bg-inner); border: 1px solid var(--border-subtle); padding: 10px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="width: 28px; height: 28px; background: #1e293b; color: #38bdf8; font-weight: 800; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                  ${(msg.senderName || 'U').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                    <strong style="color: #fff; font-size: 0.82rem;">${msg.senderName || 'User'}</strong>
+                    <span class="room-code-badge" style="font-size: 0.65rem; padding: 1px 5px;">${msg.partyCode}</span>
+                  </div>
+                  <div style="font-size: 0.82rem; color: #cbd5e1; word-break: break-word;">
+                    ${msg.text || ''}
+                    ${isSticker ? `<span class="badge badge-amber" style="margin-left: 4px;">🎬 Reaction Sticker</span>` : ''}
+                  </div>
+                </div>
+              </div>
+              <span style="font-family: monospace; font-size: 0.7rem; color: var(--text-dark); flex-shrink: 0;">${timeStr}</span>
+            </div>
+          `;
+        }
+      });
+
+      container.innerHTML = html;
+      if (window.lucide) lucide.createIcons();
     }
 
     function renderParties(rooms) {

@@ -284,6 +284,7 @@ export function registerPartySocket(io) {
 
       room.messages.push(messageObj);
       if (room.messages.length > 200) room.messages.shift();
+      recordGlobalChatMessage(messageObj);
 
       io.to(currentPartyCode).emit('chat:message', messageObj);
 
@@ -457,8 +458,14 @@ export function registerPartySocket(io) {
   });
 }
 
-// Global real-time audit event log for admin panel
+// Global real-time audit event log & chat stream for admin panel
 const systemEventLog = [];
+const globalChatMessages = [];
+
+export function recordGlobalChatMessage(msg) {
+  globalChatMessages.unshift(msg);
+  if (globalChatMessages.length > 200) globalChatMessages.pop();
+}
 
 export function logAdminEvent(type, title, details = {}) {
   const event = {
@@ -498,6 +505,7 @@ export function getActiveRoomsList() {
       mediaInfo: room.mediaInfo || { title: 'Netflix Stream', videoUrl: '' },
       playbackState: room.playbackState || { isPlaying: false, currentTime: 0, lastUpdated: new Date() },
       settings: room.settings || {},
+      messages: room.messages ? room.messages.slice(-50) : [],
       messageCount: room.messages ? room.messages.length : 0,
       createdAt: room.createdAt || new Date(),
       lastActivity: room.lastActivity || new Date()
@@ -510,7 +518,7 @@ export function getAdminDashboardStats() {
   const rooms = getActiveRoomsList();
   let totalMembers = 0;
   let totalVoiceUsers = 0;
-  let totalMessages = 0;
+  let totalMessages = globalChatMessages.length;
   let playingCount = 0;
   let pausedCount = 0;
 
@@ -527,13 +535,28 @@ export function getAdminDashboardStats() {
     titleBreakdown[title] = (titleBreakdown[title] || 0) + r.memberCount;
   });
 
+  // Aggregate all messages across all rooms + global messages
+  const allAggregatedMessages = [...globalChatMessages];
+  rooms.forEach(r => {
+    if (r.messages) {
+      r.messages.forEach(m => {
+        if (!allAggregatedMessages.some(x => x.id === m.id)) {
+          allAggregatedMessages.push(m);
+        }
+      });
+    }
+  });
+
+  // Sort by timestamp descending
+  allAggregatedMessages.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
   const memoryUsage = process.memoryUsage();
 
   return {
     totalParties: rooms.length,
     totalMembers,
     totalVoiceUsers,
-    totalMessages,
+    totalMessages: Math.max(totalMessages, allAggregatedMessages.length),
     playingCount,
     pausedCount,
     titleBreakdown,
@@ -541,6 +564,7 @@ export function getAdminDashboardStats() {
     memoryMb: Math.round(memoryUsage.heapUsed / 1024 / 1024),
     rssMb: Math.round(memoryUsage.rss / 1024 / 1024),
     recentEvents: systemEventLog.slice(0, 25),
+    recentMessages: allAggregatedMessages.slice(0, 50),
     rooms
   };
 }
