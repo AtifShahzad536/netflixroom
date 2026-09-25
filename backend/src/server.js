@@ -7,7 +7,14 @@ import { connectDB } from './config/db.js';
 import partyRoutes from './routes/partyRoutes.js';
 import { registerPartySocket } from './sockets/partySocket.js';
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicPath = path.join(__dirname, '../public');
 
 const app = express();
 const server = http.createServer(app);
@@ -26,16 +33,19 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Serve Static Landing Page & Assets
+app.use(express.static(publicPath));
+
 // API Routes
 app.use('/api/party', partyRoutes);
 
-// Root Status endpoint
-app.get('/', (req, res) => {
-  res.json({
-    status: 'online',
-    service: 'Netflix Watch Party Real-time Server',
-    websockets: 'active',
-    timestamp: new Date().toISOString()
+// Direct Extension Download Endpoint
+app.get('/download', (req, res) => {
+  const zipPath = path.join(publicPath, 'netflixroom-extension.zip');
+  res.download(zipPath, 'netflixroom-extension.zip', (err) => {
+    if (err) {
+      res.status(404).send('Download file not found');
+    }
   });
 });
 
@@ -46,6 +56,11 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     service: 'Netflix Watch Party Real-time Server'
   });
+});
+
+// Fallback to Landing Page for root & frontend navigation
+app.get('/', (req, res) => {
+  res.sendFile(path.join(publicPath, 'index.html'));
 });
 
 // Socket.IO Setup
