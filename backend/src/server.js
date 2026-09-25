@@ -29,6 +29,16 @@ app.use(express.json());
 // API Routes
 app.use('/api/party', partyRoutes);
 
+// Root Status endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'online',
+    service: 'Netflix Watch Party Real-time Server',
+    websockets: 'active',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({

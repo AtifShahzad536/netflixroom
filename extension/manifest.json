@@ -12,7 +12,9 @@
   "host_permissions": [
     "*://*.netflix.com/*",
     "http://localhost:5000/*",
-    "ws://localhost:5000/*"
+    "ws://localhost:5000/*",
+    "https://*/*",
+    "wss://*/*"
   ],
   "background": {
     "service_worker": "background.js",
