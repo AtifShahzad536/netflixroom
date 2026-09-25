@@ -1,0 +1,11 @@
+{
+  "name": "netflixroom-root",
+  "version": "1.0.0",
+  "description": "Netflix Watch Party Monorepo",
+  "scripts": {
+    "build": "cd extension && npm run build",
+    "build:extension": "cd extension && npm run build",
+    "start:backend": "cd backend && npm start",
+    "start:extension": "cd extension && npm run dev"
+  }
+}

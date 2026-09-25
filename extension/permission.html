@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Microphone Permission — Netflix Watch Party</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+    }
+    body {
+      background-color: #0d0e12;
+      color: #F8FAFC;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .card {
+      background-color: #14161d;
+      border: 1px solid #272b3a;
+      border-radius: 5px;
+      padding: 32px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .icon-box {
+      width: 56px;
+      height: 56px;
+      background-color: rgba(229, 9, 20, 0.15);
+      border: 1px solid rgba(229, 9, 20, 0.3);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px auto;
+      color: #E50914;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    p {
+      font-size: 13px;
+      color: #94A3B8;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .btn {
+      background-color: #E50914;
+      color: #ffffff;
+      border: none;
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      transition: background-color 0.15s;
+    }
+    .btn:hover {
+      background-color: #b80710;
+    }
+    .status {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #10B981;
+      display: none;
+    }
+    .error {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #F87171;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="/logo.png" alt="Logo" style="width: 56px; height: 56px; object-fit: contain; margin: 0 auto 16px auto; display: block;" />
+    <h1>Enable Microphone for Watch Party</h1>
+    <p>
+      Google Chrome requires granting microphone permission in a tab once to allow voice chat inside the Watch Party side panel.
+    </p>
+    <button id="allowBtn" class="btn">Allow Microphone Access</button>
+    <div id="statusMsg" class="status">✓ Permission granted! Returning to Watch Party...</div>
+    <div id="errorMsg" class="error">Permission was denied. Please allow microphone access in Chrome settings.</div>
+  </div>
+
+  <script type="module" src="/src/permission/permission.ts"></script>
+</body>
+</html>
