@@ -292,7 +292,7 @@ export const SidepanelApp: React.FC = () => {
 
   const handleCreateParty = async (name: string, description: string, onlyHost: boolean): Promise<Party | null> => {
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'https://netflixroom.vercel.app/api';
       const response = await fetch(`${apiUrl}/party/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

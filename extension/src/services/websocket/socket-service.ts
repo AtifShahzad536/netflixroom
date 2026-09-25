@@ -20,7 +20,7 @@ class SocketService {
   private mediaUpdateListeners: Set<EventHandler<any>> = new Set();
 
   constructor() {
-    this.url = (import.meta as any).env?.VITE_WS_URL || 'http://localhost:5000';
+    this.url = (import.meta as any).env?.VITE_WS_URL || 'https://netflixroom.vercel.app';
   }
 
   public connect(): Socket {
