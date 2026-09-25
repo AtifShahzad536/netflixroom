@@ -53,7 +53,23 @@ netflixroom/
 
 ---
 
-## 🚀 Quick Start
+## 📥 How to Install & Use (For Friends & Non-Developers)
+
+Koi bhi user bina coding ya software install kiye yeh extension Chrome me chala sakta hai:
+
+1. **Download Extension:**
+   - GitHub Releases se ya is repo se `netflixroom-extension.zip` download karein aur kisi folder me **Extract / Unzip** karein.
+2. **Load in Chrome:**
+   - Google Chrome open karein aur URL bar me likhein: `chrome://extensions/`
+   - Top-right corner par **Developer mode** on karein.
+   - Top-left par **Load unpacked** button par click karein aur extracted folder select karein.
+3. **Enjoy Watching:**
+   - [Netflix](https://www.netflix.com) open karein aur top-right Extensions menu se **Netflix Watch Party** icon par click karein.
+   - Side panel open ho jayega. Room banayein ya Party Code enter kar ke join karein!
+
+---
+
+## 🚀 Developer Setup
 
 ### 1. Backend Server Setup
 
@@ -64,18 +80,13 @@ npm start
 ```
 *Server runs on `http://localhost:5000` with WebSocket support.*
 
-### 2. Chrome Extension Setup
+### 2. Chrome Extension Build
 
 ```bash
 cd extension
 npm install
 npm run build
 ```
-
-1. Open Google Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** (top right toggle).
-3. Click **Load unpacked** and select the `netflixroom/extension/dist` folder.
-4. Open [Netflix](https://www.netflix.com), click the extension icon to open the Side Panel, create or join a party, and enjoy!
 
 ---
 
