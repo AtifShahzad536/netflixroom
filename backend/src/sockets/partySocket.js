@@ -456,3 +456,183 @@ export function registerPartySocket(io) {
     socket.on('disconnect', handleLeave);
   });
 }
+
+// Global real-time audit event log for admin panel
+const systemEventLog = [];
+
+export function logAdminEvent(type, title, details = {}) {
+  const event = {
+    id: `evt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+    type,
+    title,
+    details,
+    timestamp: new Date().toISOString()
+  };
+  systemEventLog.unshift(event);
+  if (systemEventLog.length > 100) systemEventLog.pop();
+  return event;
+}
+
+export function getActiveRoomsList() {
+  const list = [];
+  activeRooms.forEach((room, code) => {
+    list.push({
+      partyCode: room.partyCode || code,
+      name: room.name || 'Watch Party',
+      description: room.description || '',
+      hostId: room.hostId || '',
+      hostName: room.hostName || 'Anonymous Host',
+      memberCount: room.members ? room.members.length : 0,
+      members: (room.members || []).map(m => ({
+        userId: m.userId,
+        name: m.name,
+        avatar: m.avatar || '',
+        isHost: !!m.isHost,
+        isMuted: !!m.isMuted,
+        isSpeaking: !!m.isSpeaking,
+        inVoice: !!m.inVoice,
+        socketId: m.socketId || '',
+        lastActive: m.lastActive || new Date()
+      })),
+      voiceCount: room.voiceParticipants ? room.voiceParticipants.size : 0,
+      mediaInfo: room.mediaInfo || { title: 'Netflix Stream', videoUrl: '' },
+      playbackState: room.playbackState || { isPlaying: false, currentTime: 0, lastUpdated: new Date() },
+      settings: room.settings || {},
+      messageCount: room.messages ? room.messages.length : 0,
+      createdAt: room.createdAt || new Date(),
+      lastActivity: room.lastActivity || new Date()
+    });
+  });
+  return list;
+}
+
+export function getAdminDashboardStats() {
+  const rooms = getActiveRoomsList();
+  let totalMembers = 0;
+  let totalVoiceUsers = 0;
+  let totalMessages = 0;
+  let playingCount = 0;
+  let pausedCount = 0;
+
+  const titleBreakdown = {};
+
+  rooms.forEach(r => {
+    totalMembers += r.memberCount;
+    totalVoiceUsers += r.voiceCount;
+    totalMessages += r.messageCount;
+    if (r.playbackState.isPlaying) playingCount++;
+    else pausedCount++;
+
+    const title = r.mediaInfo.title || 'Unknown Title';
+    titleBreakdown[title] = (titleBreakdown[title] || 0) + r.memberCount;
+  });
+
+  const memoryUsage = process.memoryUsage();
+
+  return {
+    totalParties: rooms.length,
+    totalMembers,
+    totalVoiceUsers,
+    totalMessages,
+    playingCount,
+    pausedCount,
+    titleBreakdown,
+    serverUptime: process.uptime(),
+    memoryMb: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+    rssMb: Math.round(memoryUsage.rss / 1024 / 1024),
+    recentEvents: systemEventLog.slice(0, 25),
+    rooms
+  };
+}
+
+export function closeRoomByAdmin(io, partyCode) {
+  const code = partyCode.toUpperCase();
+  const room = activeRooms.get(code);
+  if (!room) return { success: false, error: 'Room not found' };
+
+  if (io) {
+    const alertMsg = {
+      id: `sys-${Date.now()}`,
+      partyCode: code,
+      senderId: 'system',
+      senderName: 'Administrator',
+      text: 'This watch party was closed by Server Administration.',
+      type: 'system',
+      timestamp: new Date().toISOString()
+    };
+    io.to(code).emit('chat:message', alertMsg);
+    io.to(code).emit('party:closed', { reason: 'Closed by Administrator' });
+  }
+
+  activeRooms.delete(code);
+  logAdminEvent('ROOM_CLOSED', `Party ${code} was terminated by Admin`, { partyCode: code });
+  return { success: true, partyCode: code };
+}
+
+export function kickUserByAdmin(io, partyCode, userId) {
+  const code = partyCode.toUpperCase();
+  const room = activeRooms.get(code);
+  if (!room) return { success: false, error: 'Room not found' };
+
+  const member = room.members.find(m => m.userId === userId);
+  if (!member) return { success: false, error: 'Member not found in room' };
+
+  room.members = room.members.filter(m => m.userId !== userId);
+  if (room.voiceParticipants) room.voiceParticipants.delete(userId);
+
+  if (io) {
+    if (member.socketId) {
+      io.to(member.socketId).emit('party:kicked', { reason: 'Removed by Server Admin' });
+    }
+    io.to(code).emit('party:member-left', {
+      userId,
+      name: member.name,
+      totalMembers: room.members.length,
+      kicked: true
+    });
+    const kickMsg = {
+      id: `sys-${Date.now()}`,
+      partyCode: code,
+      senderId: 'system',
+      senderName: 'System',
+      text: `${member.name} was removed by Administrator`,
+      type: 'system',
+      timestamp: new Date().toISOString()
+    };
+    io.to(code).emit('chat:message', kickMsg);
+  }
+
+  logAdminEvent('USER_KICKED', `User ${member.name} (${userId}) removed from ${code}`, { partyCode: code, userId });
+  return { success: true, removedUser: member.name };
+}
+
+export function broadcastMessageByAdmin(io, partyCode, messageText) {
+  const code = partyCode ? partyCode.toUpperCase() : null;
+  const msgObj = {
+    id: `admin-${Date.now()}`,
+    partyCode: code || 'ALL',
+    senderId: 'admin',
+    senderName: '🛡️ Server Admin',
+    senderAvatar: '',
+    text: messageText,
+    type: 'system',
+    timestamp: new Date().toISOString()
+  };
+
+  if (code && code !== 'ALL') {
+    const room = activeRooms.get(code);
+    if (room) {
+      room.messages.push(msgObj);
+      if (io) io.to(code).emit('chat:message', msgObj);
+    }
+  } else {
+    // Broadcast to all active rooms
+    activeRooms.forEach((room, rCode) => {
+      room.messages.push(msgObj);
+      if (io) io.to(rCode).emit('chat:message', msgObj);
+    });
+  }
+
+  logAdminEvent('BROADCAST', `Admin announcement sent: "${messageText.substring(0, 40)}..."`, { target: code || 'GLOBAL' });
+  return { success: true, message: msgObj };
+}
