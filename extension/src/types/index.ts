@@ -84,4 +84,10 @@ export type ExtensionAction =
   | { type: 'NETFLIX_LOCAL_PLAY'; payload: { position: number } }
   | { type: 'NETFLIX_LOCAL_PAUSE'; payload: { position: number } }
   | { type: 'NETFLIX_LOCAL_SEEK'; payload: { position: number } }
-  | { type: 'OPEN_SIDEPANEL' };
+  | { type: 'OPEN_SIDEPANEL' }
+  | { type: 'PARTY_STATE_SYNC'; payload: { party: Party | null; inVoice: boolean; isMuted: boolean; isSpeaking: boolean; messages: ChatMessage[]; currentUser: User } }
+  | { type: 'FLOATING_ACTION_TOGGLE_VOICE' }
+  | { type: 'FLOATING_ACTION_TOGGLE_MUTE' }
+  | { type: 'FLOATING_ACTION_SEND_CHAT'; payload: { text: string; type?: 'chat' | 'sticker'; stickerUrl?: string } }
+  | { type: 'FLOATING_ACTION_RESYNC' }
+  | { type: 'FLOATING_ACTION_LEAVE_PARTY' };

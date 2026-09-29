@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Party, User, ChatMessage, ConnectionStatus, Member, SyncEventPayload } from '../types';
+import { Party, User, ChatMessage, ConnectionStatus, SyncEventPayload } from '../types';
 import { socketService } from '../services/websocket/socket-service';
 import { voiceService } from '../services/webrtc/voice-service';
 import { StorageService } from '../services/storage/storage-service';
@@ -43,100 +43,154 @@ export const SidepanelApp: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // 1. Initialize user & check Netflix tab
+  // Helper to send message to Netflix tab
+  const sendToEngine = useCallback((message: any): Promise<any> => {
+    return new Promise((resolve) => {
+      if (typeof chrome === 'undefined' || !chrome.tabs) {
+        resolve({ success: false });
+        return;
+      }
+      chrome.tabs.query({ active: true, currentWindow: true }, (activeTabs) => {
+        const activeTab = activeTabs && activeTabs[0];
+        if (activeTab && activeTab.id && activeTab.url && activeTab.url.includes('netflix.com')) {
+          chrome.tabs.sendMessage(activeTab.id, message, (response) => {
+            if (!chrome.runtime.lastError && response) {
+              resolve(response);
+              return;
+            }
+            // Fallback to searching all netflix tabs
+            queryAllNetflixTabs(message, resolve);
+          });
+        } else {
+          queryAllNetflixTabs(message, resolve);
+        }
+      });
+    });
+  }, []);
+
+  const queryAllNetflixTabs = (message: any, resolve: (val: any) => void) => {
+    chrome.tabs.query({ url: '*://*.netflix.com/*' }, (tabs) => {
+      if (tabs && tabs.length > 0 && tabs[0].id) {
+        chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
+          if (chrome.runtime.lastError) resolve({ success: false });
+          else resolve(response || { success: true });
+        });
+      } else {
+        resolve({ success: false });
+      }
+    });
+  };
+
+  // 1. Initialize user, check active Netflix tab, and load active party state
   useEffect(() => {
     const init = async () => {
-      const savedUser = await StorageService.getUser();
-      if (savedUser) {
-        setCurrentUser(savedUser);
-      } else {
-        const defaultUser: User = {
+      let user = await StorageService.getUser();
+      if (!user) {
+        user = {
           userId: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
           name: `Watcher_${Math.floor(100 + Math.random() * 900)}`
         };
-        setCurrentUser(defaultUser);
-        await StorageService.setUser(defaultUser);
+        await StorageService.setUser(user);
       }
+      setCurrentUser(user);
 
-      // Check for Netflix active tab
+      // Check Netflix active tab
       if (typeof chrome !== 'undefined' && chrome.tabs) {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           const url = tabs[0]?.url || '';
           setIsNetflixActive(url.includes('netflix.com'));
         });
       }
-    };
-    init();
-  }, []);
 
-  // 2. Setup Socket.IO real-time event subscriptions
+      // Check active party session
+      const activeCode = await StorageService.getActivePartyCode();
+      const savedSession = await StorageService.getPartySession();
+      if (activeCode) {
+        const party = savedSession?.party || {
+          partyCode: activeCode,
+          name: 'Watch Party',
+          hostId: user.userId,
+          hostName: user.name,
+          members: [{
+            userId: user.userId,
+            name: user.name,
+            isHost: true,
+            isMuted: true,
+            isSpeaking: false,
+            inVoice: false
+          }],
+          mediaInfo: { title: 'Netflix Stream' },
+          playbackState: { isPlaying: false, currentTime: 0, lastUpdated: Date.now() },
+          settings: { onlyHostCanControl: false, isVoiceEnabled: true, maxMembers: 20 },
+          isActive: true
+        };
+
+        setActiveParty(party);
+        if (savedSession?.messages && savedSession.messages.length > 0) {
+          setMessages(savedSession.messages);
+        }
+        if (savedSession?.inVoice !== undefined) setInVoice(savedSession.inVoice);
+        if (savedSession?.isMuted !== undefined) setIsMuted(savedSession.isMuted);
+        if (savedSession?.isSpeaking !== undefined) setIsSpeaking(savedSession.isSpeaking);
+        setConnectionStatus(savedSession?.connectionStatus || 'connected');
+        setViewMode('active');
+
+        // 1. Re-join socket directly in Sidepanel for instant connection
+        socketService.joinParty(activeCode, user).then((res) => {
+          if (res && res.success && res.party) {
+            setActiveParty(res.party);
+            if (res.messages && res.messages.length > 0) {
+              setMessages((prev) => {
+                const map = new Map<string, ChatMessage>();
+                prev.forEach(m => map.set(m.id, m));
+                res.messages!.forEach((m: ChatMessage) => map.set(m.id, m));
+                return Array.from(map.values());
+              });
+            }
+          }
+        }).catch(() => {});
+
+        // 2. Also sync with live PartyEngine on Netflix tab
+        sendToEngine({
+          type: 'ENGINE_JOIN_PARTY',
+          payload: { partyCode: activeCode, user }
+        }).then(() => {
+          sendToEngine({ type: 'GET_PARTY_ENGINE_STATE' }).then((resp) => {
+            if (resp && resp.success && resp.state) {
+              const st = resp.state;
+              if (st.party) setActiveParty(st.party);
+              if (st.messages && st.messages.length > 0) {
+                setMessages((prev) => {
+                  const map = new Map<string, ChatMessage>();
+                  prev.forEach(m => map.set(m.id, m));
+                  st.messages.forEach((m: ChatMessage) => map.set(m.id, m));
+                  return Array.from(map.values());
+                });
+              }
+              if (st.inVoice !== undefined) setInVoice(st.inVoice);
+              if (st.isMuted !== undefined) setIsMuted(st.isMuted);
+              if (st.isSpeaking !== undefined) setIsSpeaking(st.isSpeaking);
+              setConnectionStatus(st.connectionStatus || 'connected');
+            }
+          });
+        }).catch(() => {});
+      }
+    };
+
+    init();
+  }, [sendToEngine]);
+
+  // 2. Real-time Socket.IO Subscriptions (Direct sidepanel events)
   useEffect(() => {
     const unsubStatus = socketService.onStatusChange((status) => {
       setConnectionStatus(status);
     });
 
-    const unsubPlay = socketService.onPlay((payload: SyncEventPayload) => {
-      setActiveParty((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          playbackState: {
-            ...prev.playbackState,
-            isPlaying: true,
-            currentTime: payload.position,
-            lastUpdated: Date.now()
-          }
-        };
-      });
-
-      // Send execution to content script
-      sendToActiveNetflixTab({
-        type: 'NETFLIX_EXECUTE_PLAY',
-        payload: { position: payload.position }
-      });
-    });
-
-    const unsubPause = socketService.onPause((payload: SyncEventPayload) => {
-      setActiveParty((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          playbackState: {
-            ...prev.playbackState,
-            isPlaying: false,
-            currentTime: payload.position,
-            lastUpdated: Date.now()
-          }
-        };
-      });
-
-      sendToActiveNetflixTab({
-        type: 'NETFLIX_EXECUTE_PAUSE',
-        payload: { position: payload.position }
-      });
-    });
-
-    const unsubSeek = socketService.onSeek((payload: SyncEventPayload) => {
-      setActiveParty((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          playbackState: {
-            ...prev.playbackState,
-            currentTime: payload.position,
-            lastUpdated: Date.now()
-          }
-        };
-      });
-
-      sendToActiveNetflixTab({
-        type: 'NETFLIX_EXECUTE_SEEK',
-        payload: { position: payload.position }
-      });
-    });
-
     const unsubChat = socketService.onChatMessage((msg: ChatMessage) => {
-      setMessages((prev) => [...prev, msg]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
     });
 
     const unsubMemberJoined = socketService.onMemberJoined(({ member }) => {
@@ -144,25 +198,21 @@ export const SidepanelApp: React.FC = () => {
         if (!prev) return null;
         const exists = prev.members.some((m) => m.userId === member.userId);
         if (exists) return prev;
-        return {
-          ...prev,
-          members: [...prev.members, member]
-        };
+        return { ...prev, members: [...prev.members, member] };
       });
-      addToast('info', `${member.name} joined the party`);
+      addToast('info', `${member.name} joined the watch party`);
     });
 
     const unsubMemberLeft = socketService.onMemberLeft(({ userId, name, newHostId }) => {
       setActiveParty((prev) => {
         if (!prev) return null;
-        const updated = prev.members.filter((m) => m.userId !== userId);
         return {
           ...prev,
           hostId: newHostId || prev.hostId,
-          members: updated
+          members: prev.members.filter((m) => m.userId !== userId)
         };
       });
-      addToast('info', `${name} left the party`);
+      addToast('info', `${name} left the watch party`);
     });
 
     const unsubVoiceJoined = socketService.onVoiceJoined(({ userId }) => {
@@ -208,18 +258,71 @@ export const SidepanelApp: React.FC = () => {
       });
     });
 
-    const unsubMediaUpdate = socketService.onMediaUpdate((mediaInfo) => {
+    const unsubPlay = socketService.onPlay((payload: SyncEventPayload) => {
       setActiveParty((prev) => {
         if (!prev) return null;
-        return { ...prev, mediaInfo };
+        return {
+          ...prev,
+          playbackState: { ...prev.playbackState, isPlaying: true, currentTime: payload.position, lastUpdated: Date.now() }
+        };
       });
+      sendToEngine({ type: 'NETFLIX_EXECUTE_PLAY', payload });
     });
+
+    const unsubPause = socketService.onPause((payload: SyncEventPayload) => {
+      setActiveParty((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          playbackState: { ...prev.playbackState, isPlaying: false, currentTime: payload.position, lastUpdated: Date.now() }
+        };
+      });
+      sendToEngine({ type: 'NETFLIX_EXECUTE_PAUSE', payload });
+    });
+
+    const unsubSeek = socketService.onSeek((payload: SyncEventPayload) => {
+      setActiveParty((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          playbackState: { ...prev.playbackState, currentTime: payload.position, lastUpdated: Date.now() }
+        };
+      });
+      sendToEngine({ type: 'NETFLIX_EXECUTE_SEEK', payload });
+    });
+
+    // 3. Listen to messages from Netflix tab content script
+    const handleRuntimeMessage = (message: any) => {
+      if (message.type === 'PARTY_ENGINE_STATE_CHANGED' && message.payload) {
+        const session = message.payload;
+        if (session.party) {
+          setActiveParty(session.party);
+          setViewMode('active');
+        } else {
+          setActiveParty(null);
+          setViewMode('welcome');
+        }
+        if (session.messages !== undefined && session.messages.length > 0) {
+          setMessages((prev) => {
+            const map = new Map<string, ChatMessage>();
+            prev.forEach(m => map.set(m.id, m));
+            session.messages.forEach((m: ChatMessage) => map.set(m.id, m));
+            return Array.from(map.values());
+          });
+        }
+        if (session.inVoice !== undefined) setInVoice(session.inVoice);
+        if (session.isMuted !== undefined) setIsMuted(session.isMuted);
+        if (session.isSpeaking !== undefined) setIsSpeaking(session.isSpeaking);
+        if (session.connectionStatus !== undefined) setConnectionStatus(session.connectionStatus);
+      }
+    };
+
+    if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+    }
 
     return () => {
       unsubStatus();
-      unsubPlay();
-      unsubPause();
-      unsubSeek();
       unsubChat();
       unsubMemberJoined();
       unsubMemberLeft();
@@ -227,61 +330,14 @@ export const SidepanelApp: React.FC = () => {
       unsubVoiceLeft();
       unsubVoiceSpeaking();
       unsubVoiceState();
-      unsubMediaUpdate();
-    };
-  }, [currentUser.userId]);
-
-  // 3. Listen to local Netflix events from content script
-  useEffect(() => {
-    if (typeof chrome === 'undefined' || !chrome.runtime) return;
-
-    const messageListener = (message: any) => {
-      if (!activeParty) return;
-
-      if (message.type === 'NETFLIX_LOCAL_PLAY') {
-        const canControl = !activeParty.settings.onlyHostCanControl || activeParty.hostId === currentUser.userId;
-        if (canControl) {
-          socketService.sendPlay(message.payload.position);
-        }
-      }
-
-      if (message.type === 'NETFLIX_LOCAL_PAUSE') {
-        const canControl = !activeParty.settings.onlyHostCanControl || activeParty.hostId === currentUser.userId;
-        if (canControl) {
-          socketService.sendPause(message.payload.position);
-        }
-      }
-
-      if (message.type === 'NETFLIX_LOCAL_SEEK') {
-        const canControl = !activeParty.settings.onlyHostCanControl || activeParty.hostId === currentUser.userId;
-        if (canControl) {
-          socketService.sendSeek(message.payload.position);
-        }
-      }
-
-      if (message.type === 'NETFLIX_STATUS_UPDATE') {
-        const { mediaInfo, isPlaying, currentTime } = message.payload;
-        if (mediaInfo?.title && (!activeParty.mediaInfo.title || activeParty.mediaInfo.title === 'Netflix Stream')) {
-          socketService.sendMediaUpdate(mediaInfo);
-        }
+      unsubPlay();
+      unsubPause();
+      unsubSeek();
+      if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+        chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
       }
     };
-
-    chrome.runtime.onMessage.addListener(messageListener);
-    return () => {
-      chrome.runtime.onMessage.removeListener(messageListener);
-    };
-  }, [activeParty, currentUser.userId]);
-
-  // Helper to send command to Netflix tab
-  const sendToActiveNetflixTab = (message: any) => {
-    if (typeof chrome === 'undefined' || !chrome.tabs) return;
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, message).catch(() => {});
-      }
-    });
-  };
+  }, [currentUser.userId, sendToEngine]);
 
   // Handlers
   const handleSaveUserName = async (name: string) => {
@@ -291,184 +347,191 @@ export const SidepanelApp: React.FC = () => {
   };
 
   const handleCreateParty = async (name: string, description: string, onlyHost: boolean): Promise<Party | null> => {
-    try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || 'https://netflixroom.vercel.app/api';
-      const response = await fetch(`${apiUrl}/party/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          description,
-          hostId: currentUser.userId,
-          hostName: currentUser.name,
-          settings: {
-            onlyHostCanControl: onlyHost,
-            isVoiceEnabled: true,
-            maxMembers: 20
-          }
-        })
-      });
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'WP-';
+    for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
 
-      const data = await response.json();
-      if (data.success && data.party) {
-        return data.party;
-      }
-      return null;
-    } catch {
-      // Offline fallback: generate instant party object
-      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-      let code = 'WP-';
-      for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    const newParty: Party = {
+      partyCode: code,
+      name,
+      description,
+      hostId: currentUser.userId,
+      hostName: currentUser.name,
+      members: [{
+        userId: currentUser.userId,
+        name: currentUser.name,
+        isHost: true,
+        isMuted: true,
+        isSpeaking: false,
+        inVoice: false
+      }],
+      mediaInfo: { title: 'Netflix Stream' },
+      playbackState: { isPlaying: false, currentTime: 0, lastUpdated: Date.now() },
+      settings: { onlyHostCanControl: onlyHost, isVoiceEnabled: true, maxMembers: 20 },
+      isActive: true
+    };
 
-      return {
-        partyCode: code,
-        name,
-        description,
-        hostId: currentUser.userId,
-        hostName: currentUser.name,
-        members: [{
-          userId: currentUser.userId,
-          name: currentUser.name,
-          isHost: true,
-          isMuted: true,
-          isSpeaking: false,
-          inVoice: false
-        }],
-        mediaInfo: { title: 'Netflix Stream', episodeInfo: '' },
-        playbackState: { isPlaying: false, currentTime: 0, lastUpdated: Date.now() },
-        settings: { onlyHostCanControl: onlyHost, isVoiceEnabled: true, maxMembers: 20 },
-        isActive: true
-      };
-    }
+    await StorageService.setActivePartyCode(code);
+    await StorageService.setPartySession({ party: newParty, currentUser, messages: [] });
+    setActiveParty(newParty);
+    setViewMode('active');
+
+    // Join on socket
+    socketService.joinParty(code, currentUser).catch(() => {});
+
+    // Notify Netflix tab engine to join the exact same party
+    sendToEngine({
+      type: 'ENGINE_JOIN_PARTY',
+      payload: { partyCode: code, user: currentUser }
+    });
+
+    return newParty;
   };
 
   const handleEnterParty = async (party: Party) => {
-    const res = await socketService.joinParty(party.partyCode, currentUser);
-    if (res.success && res.party) {
-      setActiveParty(res.party);
-      if (res.messages) setMessages(res.messages);
-      setViewMode('active');
-      await StorageService.setActivePartyCode(party.partyCode);
-      addToast('success', `Joined party ${party.partyCode}`);
-    } else {
-      setActiveParty(party);
-      setViewMode('active');
-      await StorageService.setActivePartyCode(party.partyCode);
-    }
+    setActiveParty(party);
+    setViewMode('active');
+    await StorageService.setActivePartyCode(party.partyCode);
+    await StorageService.setPartySession({ party, currentUser, messages, inVoice, isMuted });
+
+    socketService.joinParty(party.partyCode, currentUser).catch(() => {});
+
+    sendToEngine({
+      type: 'ENGINE_JOIN_PARTY',
+      payload: { partyCode: party.partyCode, user: currentUser }
+    });
+    addToast('success', `Joined party ${party.partyCode}`);
   };
 
   const handleJoinParty = async (code: string) => {
-    return await socketService.joinParty(code, currentUser);
+    const res = await socketService.joinParty(code, currentUser);
+
+    const partyToUse = (res && res.success && res.party) ? res.party : {
+      partyCode: code,
+      name: 'Watch Party',
+      hostId: currentUser.userId,
+      hostName: currentUser.name,
+      members: [{
+        userId: currentUser.userId,
+        name: currentUser.name,
+        isHost: false,
+        isMuted: true,
+        isSpeaking: false,
+        inVoice: false
+      }],
+      mediaInfo: { title: 'Netflix Stream' },
+      playbackState: { isPlaying: false, currentTime: 0, lastUpdated: Date.now() },
+      settings: { onlyHostCanControl: false, isVoiceEnabled: true, maxMembers: 20 },
+      isActive: true
+    };
+
+    await StorageService.setActivePartyCode(code);
+    await StorageService.setPartySession({ party: partyToUse, currentUser, messages: res?.messages || [] });
+    setActiveParty(partyToUse);
+    if (res?.messages) setMessages(res.messages);
+    setViewMode('active');
+
+    sendToEngine({
+      type: 'ENGINE_JOIN_PARTY',
+      payload: { partyCode: code, user: currentUser }
+    });
+
+    return { success: true, party: partyToUse };
   };
 
   const handleLeaveParty = async () => {
-    if (inVoice) {
-      voiceService.stopVoice();
-      setInVoice(false);
-    }
     socketService.leaveParty();
+    await sendToEngine({ type: 'ENGINE_LEAVE_PARTY' });
     setActiveParty(null);
     setMessages([]);
+    setInVoice(false);
+    setIsMuted(true);
+    setIsSpeaking(false);
     await StorageService.setActivePartyCode(null);
+    await StorageService.setPartySession(null);
     setViewMode('welcome');
     addToast('info', 'Left the watch party');
   };
 
   const handleSendMessage = async (text: string, type: 'chat' | 'sticker' = 'chat', stickerUrl?: string) => {
-    await socketService.sendMessage(text, type, stickerUrl);
+    if (!text && !stickerUrl) return;
+
+    if (activeParty && currentUser) {
+      if (!socketService.getSocket()?.connected) {
+        await socketService.joinParty(activeParty.partyCode, currentUser);
+      }
+    }
+
+    // Direct socket send - server broadcasts to room and updates all tabs/sidepanels seamlessly
+    await socketService.sendMessage(text, type, stickerUrl).catch(() => {});
   };
 
   const handleTogglePlay = () => {
-    if (!activeParty) return;
-    const targetState = !activeParty.playbackState.isPlaying;
-    const currentTime = activeParty.playbackState.currentTime;
-
-    if (targetState) {
-      socketService.sendPlay(currentTime);
-    } else {
-      socketService.sendPause(currentTime);
+    if (activeParty) {
+      const pos = activeParty.playbackState.currentTime;
+      if (activeParty.playbackState.isPlaying) {
+        socketService.sendPause(pos);
+      } else {
+        socketService.sendPlay(pos);
+      }
     }
+    sendToEngine({ type: 'ENGINE_TOGGLE_PLAY' });
   };
 
   const handleForceSync = () => {
-    if (!activeParty) return;
-    sendToActiveNetflixTab({
-      type: 'NETFLIX_EXECUTE_SEEK',
-      payload: { position: activeParty.playbackState.currentTime }
-    });
+    if (activeParty) {
+      socketService.sendSeek(activeParty.playbackState.currentTime);
+    }
+    sendToEngine({ type: 'ENGINE_FORCE_SYNC' });
     addToast('info', 'Resynced with watch party');
   };
 
-  // Voice permission & speaking listener
-  useEffect(() => {
-    voiceService.setOnPermissionGranted(async () => {
-      const res = await voiceService.startVoice();
-      if (res.success) {
-        setInVoice(true);
-        setIsMuted(false);
-        setActiveParty(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            members: prev.members.map(m => m.userId === currentUser.userId ? { ...m, inVoice: true, isMuted: false } : m)
-          };
-        });
-        addToast('success', 'Microphone enabled! Connected to voice chat.');
-      }
-    });
-
-    voiceService.setOnSpeakingChange((speaking) => {
-      setIsSpeaking(speaking);
-      setActiveParty(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          members: prev.members.map(m => m.userId === currentUser.userId ? { ...m, isSpeaking: speaking } : m)
-        };
-      });
-    });
-  }, [currentUser.userId]);
-
   const handleToggleVoice = async () => {
-    if (inVoice) {
-      voiceService.stopVoice();
-      setInVoice(false);
-      setIsMuted(true);
-      setIsSpeaking(false);
-      setActiveParty(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          members: prev.members.map(m => m.userId === currentUser.userId ? { ...m, inVoice: false, isSpeaking: false } : m)
-        };
-      });
-      addToast('info', 'Disconnected from voice chat');
-    } else {
-      const res = await voiceService.startVoice();
-      if (res.success) {
+    // Forward to persistent Netflix Tab Engine
+    const engineRes = await sendToEngine({ type: 'ENGINE_TOGGLE_VOICE' });
+    if (engineRes && engineRes.success) {
+      if (engineRes.inVoice) {
         setInVoice(true);
         setIsMuted(false);
-        setActiveParty(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            members: prev.members.map(m => m.userId === currentUser.userId ? { ...m, inVoice: true, isMuted: false } : m)
-          };
-        });
         addToast('success', 'Connected to voice chat');
       } else {
-        if (res.requiresPermissionTab) {
+        setInVoice(false);
+        setIsMuted(true);
+        setIsSpeaking(false);
+        addToast('info', 'Disconnected from voice chat');
+      }
+    } else {
+      // Fallback if no Netflix tab is currently open
+      if (inVoice) {
+        voiceService.stopVoice();
+        setInVoice(false);
+        setIsMuted(true);
+        setIsSpeaking(false);
+        addToast('info', 'Disconnected from voice chat');
+      } else {
+        const localRes = await voiceService.startVoice();
+        if (localRes.success) {
+          setInVoice(true);
+          setIsMuted(false);
+          addToast('success', 'Connected to voice chat');
+        } else if (localRes.requiresPermissionTab) {
+          voiceService.openPermissionTab();
           addToast('info', 'Please click "Allow" on the opened tab to enable microphone.');
         } else {
-          addToast('error', res.error || 'Failed to access microphone');
+          addToast('error', localRes.error || 'Failed to access microphone');
         }
       }
     }
   };
 
-  const handleToggleMute = () => {
-    const muted = voiceService.toggleMute();
-    setIsMuted(muted);
+  const handleToggleMute = async () => {
+    const engineRes = await sendToEngine({ type: 'ENGINE_TOGGLE_MUTE' });
+    if (engineRes && engineRes.success) {
+      setIsMuted(engineRes.isMuted);
+    } else {
+      const muted = voiceService.toggleMute();
+      setIsMuted(muted);
+    }
   };
 
   return (

@@ -31,7 +31,9 @@ export class VoiceService {
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' }
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
     ]
   };
 
@@ -92,7 +94,6 @@ export class VoiceService {
     if (!enabled) {
       this.isPttPressed = false;
     } else {
-      // In PTT mode, ensure gate is closed initially
       if (!this.isPttPressed && this.isSpeaking) {
         this.setSpeakingState(false);
         if (this.noiseGateGain && this.audioContext) {
@@ -151,29 +152,32 @@ export class VoiceService {
     return this.peerVolumes.get(socketId) ?? 1.0;
   }
 
+  private hasSignaledListeners: boolean = false;
   private setupSignalingListeners(): void {
-    const socket = socketService.getSocket();
-    if (!socket) return;
+    if (this.hasSignaledListeners) return;
+    this.hasSignaledListeners = true;
 
-    socket.on('voice:existing-participants', async ({ participants }: { participants: Array<{ socketId: string; userId: string; name: string }> }) => {
+    socketService.onVoiceParticipants(async ({ participants }) => {
       console.log('[WebRTC] Joining user received existing participants:', participants);
       if (this.isConnected && participants) {
+        const mySocketId = socketService.getSocket()?.id;
         for (const p of participants) {
-          if (p.socketId && p.socketId !== socket.id) {
+          if (p.socketId && p.socketId !== mySocketId) {
             await this.initiateCallToPeer(p.socketId);
           }
         }
       }
     });
 
-    socket.on('voice:user-joined', ({ socketId, userId }: { socketId: string; userId: string }) => {
+    socketService.onVoiceJoined(({ socketId, userId }) => {
       console.log('[WebRTC] Peer joined voice, ready for offer:', socketId, userId);
-      if (this.isConnected && socketId && socketId !== socket.id) {
+      const mySocketId = socketService.getSocket()?.id;
+      if (this.isConnected && socketId && socketId !== mySocketId) {
         this.getOrCreatePeerConnection(socketId);
       }
     });
 
-    socket.on('voice:signal:offer', async ({ fromSocketId, offer }: { fromSocketId: string; offer: RTCSessionDescriptionInit }) => {
+    socketService.onVoiceOffer(async ({ fromSocketId, offer }) => {
       try {
         console.log('[WebRTC] 📞 Received offer from:', fromSocketId);
         const pc = this.getOrCreatePeerConnection(fromSocketId);
@@ -184,16 +188,13 @@ export class VoiceService {
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        socket.emit('voice:signal:answer', {
-          toSocketId: fromSocketId,
-          answer
-        });
+        socketService.sendVoiceAnswer(fromSocketId, answer);
       } catch (err) {
         console.error('[WebRTC] Error handling offer:', err);
       }
     });
 
-    socket.on('voice:signal:answer', async ({ fromSocketId, answer }: { fromSocketId: string; answer: RTCSessionDescriptionInit }) => {
+    socketService.onVoiceAnswer(async ({ fromSocketId, answer }) => {
       try {
         console.log('[WebRTC] 📥 Received answer from:', fromSocketId);
         const pc = this.peerConnections.get(fromSocketId);
@@ -206,7 +207,7 @@ export class VoiceService {
       }
     });
 
-    socket.on('voice:signal:candidate', async ({ fromSocketId, candidate }: { fromSocketId: string; candidate: RTCIceCandidateInit }) => {
+    socketService.onVoiceCandidate(async ({ fromSocketId, candidate }) => {
       try {
         const pc = this.peerConnections.get(fromSocketId);
         if (pc && pc.remoteDescription && pc.remoteDescription.type) {
@@ -222,7 +223,7 @@ export class VoiceService {
       }
     });
 
-    socket.on('voice:user-left', ({ socketId }: { socketId?: string }) => {
+    socketService.onVoiceLeft(({ socketId }) => {
       if (socketId && this.peerConnections.has(socketId)) {
         this.closePeer(socketId);
       }
@@ -252,11 +253,7 @@ export class VoiceService {
       });
       await pc.setLocalDescription(offer);
 
-      const socket = socketService.getSocket();
-      socket?.emit('voice:signal:offer', {
-        toSocketId: socketId,
-        offer
-      });
+      socketService.sendVoiceOffer(socketId, offer);
     } catch (err) {
       console.error('[WebRTC] Error creating offer for peer:', socketId, err);
     }
@@ -269,24 +266,30 @@ export class VoiceService {
 
     const pc = new RTCPeerConnection(this.rtcConfig);
 
-    const streamToAttach = this.processedStream || this.rawStream;
+    const streamToAttach = this.rawStream;
     if (streamToAttach) {
       streamToAttach.getAudioTracks().forEach(track => {
+        track.enabled = !this.isMuted;
         pc.addTrack(track, streamToAttach);
       });
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socketService.getSocket()?.emit('voice:signal:candidate', {
-          toSocketId: socketId,
-          candidate: event.candidate.toJSON()
-        });
+        socketService.sendVoiceCandidate(socketId, event.candidate.toJSON());
       }
     };
 
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Peer ${socketId} connectionState:`, pc.connectionState);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC] Peer ${socketId} iceConnectionState:`, pc.iceConnectionState);
+    };
+
     pc.ontrack = (event) => {
-      console.log('[WebRTC] 🔊 Playing incoming clean audio from peer:', socketId);
+      console.log('[WebRTC] 🔊 Playing incoming clean audio from peer:', socketId, event);
       if (event.streams && event.streams[0]) {
         this.playRemoteAudioStream(socketId, event.streams[0]);
       } else {
@@ -299,12 +302,23 @@ export class VoiceService {
     return pc;
   }
 
+  private playbackAudioContext: AudioContext | null = null;
+  private peerAudioSources: Map<string, { source: MediaStreamAudioSourceNode; gain: GainNode }> = new Map();
+
   private playRemoteAudioStream(socketId: string, stream: MediaStream): void {
+    // 1. HTML5 Audio Element playback
     let container = document.getElementById('webrtc-audio-container');
     if (!container) {
       container = document.createElement('div');
       container.id = 'webrtc-audio-container';
-      document.body.appendChild(container);
+      container.style.position = 'fixed';
+      container.style.bottom = '0';
+      container.style.right = '0';
+      container.style.width = '1px';
+      container.style.height = '1px';
+      container.style.opacity = '0.01';
+      container.style.pointerEvents = 'none';
+      (document.body || document.documentElement).appendChild(container);
     }
 
     let audioEl = document.getElementById(`remote-audio-${socketId}`) as HTMLAudioElement;
@@ -327,15 +341,39 @@ export class VoiceService {
     const playPromise = audioEl.play();
     if (playPromise !== undefined) {
       playPromise.catch((err) => {
-        console.warn('[WebRTC] Browser blocked autoplay, listening for interaction:', err);
+        console.warn('[WebRTC] Autoplay waiting for interaction:', err);
         const playOnInteraction = () => {
           audioEl.play().catch(() => {});
+          if (this.playbackAudioContext && this.playbackAudioContext.state === 'suspended') {
+            this.playbackAudioContext.resume().catch(() => {});
+          }
           window.removeEventListener('click', playOnInteraction);
           window.removeEventListener('keydown', playOnInteraction);
         };
         window.addEventListener('click', playOnInteraction);
         window.addEventListener('keydown', playOnInteraction);
       });
+    }
+
+    // 2. Direct Web Audio API routing to speakers
+    try {
+      if (!this.playbackAudioContext || this.playbackAudioContext.state === 'closed') {
+        this.playbackAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (this.playbackAudioContext.state === 'suspended') {
+        this.playbackAudioContext.resume().catch(() => {});
+      }
+
+      if (!this.peerAudioSources.has(socketId)) {
+        const source = this.playbackAudioContext.createMediaStreamSource(stream);
+        const gain = this.playbackAudioContext.createGain();
+        gain.gain.value = Math.max(0, Math.min(1.0, userVol * this.masterVolume));
+        source.connect(gain);
+        gain.connect(this.playbackAudioContext.destination);
+        this.peerAudioSources.set(socketId, { source, gain });
+      }
+    } catch (e) {
+      console.warn('[WebRTC] WebAudio routing note:', e);
     }
   }
 
@@ -349,38 +387,42 @@ export class VoiceService {
     if (audioEl) {
       audioEl.remove();
     }
+    if (this.peerAudioSources.has(socketId)) {
+      try {
+        const entry = this.peerAudioSources.get(socketId);
+        entry?.source.disconnect();
+        entry?.gain.disconnect();
+      } catch (_) {}
+      this.peerAudioSources.delete(socketId);
+    }
     this.candidateQueues.delete(socketId);
   }
 
   public openPermissionTab(): void {
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
       chrome.tabs.create({
         url: chrome.runtime.getURL('permission.html'),
         active: true
       });
-    } else {
-      window.open('/permission.html', '_blank');
+    } else if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ type: 'OPEN_PERMISSION_TAB' }).catch(() => {});
+    } else if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+      window.open(chrome.runtime.getURL('permission.html'), '_blank');
     }
   }
 
   public async startVoice(): Promise<{ success: boolean; error?: string; requiresPermissionTab?: boolean }> {
     try {
       this.setupSignalingListeners();
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: { ideal: true },
           noiseSuppression: { ideal: true },
           autoGainControl: { ideal: false }, // Prevent AGC from artificially boosting laptop chassis taps
           channelCount: 1,
-          sampleRate: 48000,
-          googEchoCancellation: true,
-          googNoiseSuppression: true,
-          googAutoGainControl: false,
-          googHighpassFilter: true,
-          googTypingNoiseDetection: true,
-          googNoiseReduction: true
-        } as any,
+          sampleRate: 48000
+        },
         video: false
       });
 
@@ -388,96 +430,51 @@ export class VoiceService {
       this.isMuted = false;
       this.isConnected = true;
 
-      this.setupAudioDSP(stream);
+      this.setupAudioVAD(stream);
 
-      const streamToAttach = this.processedStream || this.rawStream;
       this.peerConnections.forEach(pc => {
-        streamToAttach.getAudioTracks().forEach(track => {
-          pc.addTrack(track, streamToAttach);
+        stream.getAudioTracks().forEach(track => {
+          track.enabled = !this.isMuted;
+          pc.addTrack(track, stream);
         });
       });
 
       socketService.joinVoice();
       return { success: true };
     } catch (err: any) {
-      console.warn('[Voice] getUserMedia error in sidepanel:', err);
-      const errMsg = (err.message || '').toLowerCase();
+      console.log('[Voice] Microphone getUserMedia result:', err?.message || err);
+      const errMsg = (err?.message || '').toLowerCase();
       
-      if (errMsg.includes('dismissed') || errMsg.includes('notallowed') || errMsg.includes('permission') || err.name === 'NotAllowedError') {
-        this.openPermissionTab();
-        return {
-          success: false,
-          error: 'Please click "Allow" on the opened tab to enable microphone.',
-          requiresPermissionTab: true
-        };
+      if (errMsg.includes('dismissed') || errMsg.includes('notallowed') || errMsg.includes('permission') || err?.name === 'NotAllowedError') {
+        if (window.location.protocol === 'chrome-extension:') {
+          this.openPermissionTab();
+          return {
+            success: false,
+            error: 'Please click "Allow" on the opened tab to enable microphone.',
+            requiresPermissionTab: true
+          };
+        }
       }
 
-      return { success: false, error: err.message || 'Microphone access denied' };
+      return { success: false, error: err?.message || 'Microphone access denied' };
     }
   }
 
-  private setupAudioDSP(stream: MediaStream): void {
+  private setupAudioVAD(stream: MediaStream): void {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
       const source = this.audioContext.createMediaStreamSource(stream);
 
-      // 1. Cascaded 24dB/octave Steep High-Pass Filter (260 Hz)
-      // Eliminates laptop chassis mechanical vibration from keyboard typing and trackpad clicks
-      const highPass1 = this.audioContext.createBiquadFilter();
-      highPass1.type = 'highpass';
-      highPass1.frequency.value = 260;
-      highPass1.Q.value = 0.707;
-
-      const highPass2 = this.audioContext.createBiquadFilter();
-      highPass2.type = 'highpass';
-      highPass2.frequency.value = 260;
-      highPass2.Q.value = 0.707;
-
-      // 2. Cascaded 24dB/octave Low-Pass Filter (3200 Hz)
-      // Cuts high-frequency plastic switch clacks and mouse click transients
-      const lowPass1 = this.audioContext.createBiquadFilter();
-      lowPass1.type = 'lowpass';
-      lowPass1.frequency.value = 3200;
-      lowPass1.Q.value = 0.707;
-
-      const lowPass2 = this.audioContext.createBiquadFilter();
-      lowPass2.type = 'lowpass';
-      lowPass2.frequency.value = 3200;
-      lowPass2.Q.value = 0.707;
-
-      // 3. Human Vocal Formant Enhancer (1800 Hz)
-      const vocalFocus = this.audioContext.createBiquadFilter();
-      vocalFocus.type = 'peaking';
-      vocalFocus.frequency.value = 1800;
-      vocalFocus.Q.value = 1.0;
-      vocalFocus.gain.value = 3.0;
-
-      // 4. Smart Noise Gate Gain Node
-      this.noiseGateGain = this.audioContext.createGain();
-      this.noiseGateGain.gain.setValueAtTime(0.0, this.audioContext.currentTime);
-
-      // 5. Analyser for Formant-Based Voice Activity Detection
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 512; // 256 frequency bins (93.75 Hz / bin)
-      this.analyser.smoothingTimeConstant = 0.25;
-
-      // Audio Graph Connection
-      source.connect(highPass1);
-      highPass1.connect(highPass2);
-      highPass2.connect(lowPass1);
-      lowPass1.connect(lowPass2);
-      lowPass2.connect(vocalFocus);
-      vocalFocus.connect(this.analyser);
-      vocalFocus.connect(this.noiseGateGain);
-
-      const destination = this.audioContext.createMediaStreamDestination();
-      this.noiseGateGain.connect(destination);
-      this.processedStream = destination.stream;
+      this.analyser.fftSize = 256;
+      this.analyser.smoothingTimeConstant = 0.3;
+      source.connect(this.analyser);
 
       const bufferLength = this.analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
-      this.sustainedVoiceFrames = 0;
-      this.noiseFloor = 6;
 
       if (this.volumeIntervalId) {
         clearInterval(this.volumeIntervalId);
@@ -488,92 +485,37 @@ export class VoiceService {
           if (this.isSpeaking) {
             this.setSpeakingState(false);
           }
-          if (this.noiseGateGain && this.audioContext) {
-            this.noiseGateGain.gain.setTargetAtTime(0.0, this.audioContext.currentTime, 0.03);
-          }
           this.onLiveLevelCallback?.(0, false);
           return;
         }
 
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          this.audioContext.resume().catch(() => {});
+        }
+
         this.analyser.getByteFrequencyData(dataArray);
 
-        // Analyze specific spectral bands:
-        // Vocal Formant Band (Bins 3 to 28 = ~280Hz to ~2600Hz)
-        let vocalSum = 0;
-        let vocalPeak = 0;
-        const vocalStart = 3;
-        const vocalEnd = 28;
-        for (let i = vocalStart; i <= vocalEnd; i++) {
-          const val = dataArray[i];
-          vocalSum += val;
-          if (val > vocalPeak) vocalPeak = val;
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
         }
-        const vocalAvg = vocalSum / (vocalEnd - vocalStart + 1);
+        const avg = sum / bufferLength;
+        const normalizedLevel = Math.min(100, Math.round((avg / 30) * 100));
 
-        // High Click / Mechanical Transient Band (Bins 40 to 100 = ~3750Hz to ~9400Hz)
-        let highSum = 0;
-        const highStart = 40;
-        const highEnd = 100;
-        for (let i = highStart; i <= highEnd; i++) {
-          highSum += dataArray[i];
-        }
-        const highAvg = highSum / (highEnd - highStart + 1);
+        const effectiveThreshold = Math.min(this.gateThreshold, 14);
+        const isSpeakingNow = avg >= effectiveThreshold;
+        this.onLiveLevelCallback?.(normalizedLevel, isSpeakingNow);
 
-        // Dynamic noise floor calibration during quiet moments
-        if (vocalAvg < this.gateThreshold) {
-          this.noiseFloor = Math.max(3, this.noiseFloor * 0.98 + vocalAvg * 0.02);
-        }
-
-        // Live level calculation (normalized 0-100)
-        const liveLevelPct = Math.min(100, Math.round((vocalAvg / 50) * 100));
-        const isAboveThreshold = vocalAvg >= this.gateThreshold;
-        this.onLiveLevelCallback?.(liveLevelPct, isAboveThreshold);
-
-        // Push to Talk mode handling
-        if (this.pushToTalkMode) {
-          return; // Handled directly in setPushToTalkPressed
-        }
-
-        // Smart Voice Activity & Keystroke Rejection Logic:
-        // 1. Vocal energy must exceed user's gate threshold
-        // 2. Vocal energy must exceed ambient noise floor
-        // 3. Vocal energy must dominate over high click noise (keystroke clicks have high click energy)
-        // 4. Must sustain for >= 2 consecutive frames (~80ms) to reject single-click button taps
-        const requiredConsecutiveFrames = this.aggressiveTypingFilter ? 3 : 2;
-        const clickRatio = this.aggressiveTypingFilter ? 1.4 : 1.1;
-
-        const isVocalEnergy = vocalAvg >= this.gateThreshold && vocalAvg > (this.noiseFloor + 5);
-        const isNotClick = vocalAvg > (highAvg * clickRatio);
-
-        if (isVocalEnergy && isNotClick) {
-          this.sustainedVoiceFrames++;
-        } else {
-          this.sustainedVoiceFrames = Math.max(0, this.sustainedVoiceFrames - 1);
-        }
-
-        const isHumanSpeech = this.sustainedVoiceFrames >= requiredConsecutiveFrames;
-
-        if (isHumanSpeech) {
+        if (isSpeakingNow) {
           this.setSpeakingState(true);
-          if (this.noiseGateGain && this.audioContext) {
-            this.noiseGateGain.gain.setTargetAtTime(1.0, this.audioContext.currentTime, 0.015);
-          }
-
           if (this.speakingDebounceTimer) clearTimeout(this.speakingDebounceTimer);
           this.speakingDebounceTimer = setTimeout(() => {
-            if (this.isSpeaking && (vocalAvg < this.gateThreshold || this.sustainedVoiceFrames === 0)) {
-              this.setSpeakingState(false);
-              if (this.noiseGateGain && this.audioContext) {
-                this.noiseGateGain.gain.setTargetAtTime(0.0, this.audioContext.currentTime, 0.04);
-              }
-            }
-          }, 200);
+            this.setSpeakingState(false);
+          }, 350);
         }
-      }, 40);
-
+      }, 50);
     } catch (err) {
-      console.warn('[Voice] Audio DSP setup error, falling back to raw stream:', err);
-      this.processedStream = stream;
+      console.warn('[Voice] Audio VAD setup warning:', err);
     }
   }
 
@@ -597,6 +539,15 @@ export class VoiceService {
         track.enabled = !this.isMuted;
       });
     }
+
+    // Explicitly update all RTCRtpSenders across all active peer connections
+    this.peerConnections.forEach(pc => {
+      pc.getSenders().forEach(sender => {
+        if (sender.track) {
+          sender.track.enabled = !this.isMuted;
+        }
+      });
+    });
 
     if (this.isMuted && this.isSpeaking) {
       this.setSpeakingState(false);

@@ -49,16 +49,41 @@ export const StorageService = {
         if (code) {
           await chrome.storage.local.set({ [STORAGE_KEYS.ACTIVE_PARTY]: code });
         } else {
-          await chrome.storage.local.remove(STORAGE_KEYS.ACTIVE_PARTY);
+          await chrome.storage.local.remove([STORAGE_KEYS.ACTIVE_PARTY, 'netflix_wp_party_session']);
         }
       }
       if (code) {
         localStorage.setItem(STORAGE_KEYS.ACTIVE_PARTY, code);
       } else {
         localStorage.removeItem(STORAGE_KEYS.ACTIVE_PARTY);
+        localStorage.removeItem('netflix_wp_party_session');
       }
     } catch (e) {
       console.error('Failed to save active party code:', e);
+    }
+  },
+
+  async getPartySession(): Promise<any | null> {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const res = await chrome.storage.local.get('netflix_wp_party_session');
+        if (res['netflix_wp_party_session']) return res['netflix_wp_party_session'];
+      }
+      const raw = localStorage.getItem('netflix_wp_party_session');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  async setPartySession(session: any): Promise<void> {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await chrome.storage.local.set({ 'netflix_wp_party_session': session });
+      }
+      localStorage.setItem('netflix_wp_party_session', JSON.stringify(session));
+    } catch (e) {
+      console.error('Failed to save party session:', e);
     }
   }
 };

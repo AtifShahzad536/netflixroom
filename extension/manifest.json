@@ -26,9 +26,22 @@
         "*://*.netflix.com/*"
       ],
       "js": [
-        "content.js"
+        "content-loader.js"
       ],
       "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*",
+        "content.js",
+        "icons/*",
+        "logo.png"
+      ],
+      "matches": [
+        "*://*.netflix.com/*"
+      ]
     }
   ],
   "action": {

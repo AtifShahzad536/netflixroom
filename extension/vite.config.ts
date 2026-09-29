@@ -13,6 +13,10 @@ export default defineConfig({
           dest: '.'
         },
         {
+          src: 'content-loader.js',
+          dest: '.'
+        },
+        {
           src: 'icons/*',
           dest: 'icons'
         }

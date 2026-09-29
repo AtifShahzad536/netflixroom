@@ -5,6 +5,9 @@ import { isDbConnected } from '../config/db.js';
 // In-memory active parties cache for ultra-fast real-time sync & fallback
 const activeRooms = new Map();
 
+// Global disconnect grace timers (keyed by `${partyCode}:${userId}`)
+const disconnectTimers = new Map();
+
 // Helper to get or create memory party
 function getOrCreateMemoryParty(partyCode, initialData = {}) {
   const code = partyCode.toUpperCase();
@@ -58,6 +61,13 @@ export function registerPartySocket(io) {
         currentPartyCode = code;
         currentUser = user;
 
+        // Cancel any pending disconnect timer for this user in this room
+        const timerKey = `${code}:${user.userId}`;
+        if (disconnectTimers.has(timerKey)) {
+          clearTimeout(disconnectTimers.get(timerKey));
+          disconnectTimers.delete(timerKey);
+        }
+
         socket.join(code);
 
         let room = activeRooms.get(code);
@@ -102,30 +112,38 @@ export function registerPartySocket(io) {
         }
 
         if (existingMemberIndex >= 0) {
-          room.members[existingMemberIndex] = { ...room.members[existingMemberIndex], ...memberData };
+          // Member reconnecting / updating socket ID - update silently without re-broadcasting join spam
+          room.members[existingMemberIndex] = {
+            ...room.members[existingMemberIndex],
+            name: user.name,
+            avatar: user.avatar || room.members[existingMemberIndex].avatar,
+            socketId: socket.id,
+            lastActive: new Date()
+          };
         } else {
+          // Brand new member joining room for the first time
           room.members.push(memberData);
+
+          // Broadcast member joined
+          socket.to(code).emit('party:member-joined', {
+            member: memberData,
+            totalMembers: room.members.length
+          });
+
+          // Broadcast system chat notification
+          const joinMsg = {
+            id: `sys-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            partyCode: code,
+            senderId: 'system',
+            senderName: 'System',
+            senderAvatar: '',
+            text: `${user.name} joined the watch party`,
+            type: 'system',
+            timestamp: new Date().toISOString()
+          };
+          room.messages.push(joinMsg);
+          io.to(code).emit('chat:message', joinMsg);
         }
-
-        // Broadcast member joined
-        socket.to(code).emit('party:member-joined', {
-          member: memberData,
-          totalMembers: room.members.length
-        });
-
-        // Broadcast system chat notification
-        const joinMsg = {
-          id: `sys-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          partyCode: code,
-          senderId: 'system',
-          senderName: 'System',
-          senderAvatar: '',
-          text: `${user.name} joined the watch party`,
-          type: 'system',
-          timestamp: new Date().toISOString()
-        };
-        room.messages.push(joinMsg);
-        io.to(code).emit('chat:message', joinMsg);
 
         // Acknowledge with full room state
         if (callback) {
@@ -263,17 +281,33 @@ export function registerPartySocket(io) {
     });
 
     // 3. CHAT MESSAGING
-    socket.on('chat:message', async (data, callback) => {
-      if (!currentPartyCode || !currentUser) return;
-      const room = activeRooms.get(currentPartyCode);
-      if (!room) return;
+    socket.on('chat:message', async (data = {}, callback) => {
+      const code = (currentPartyCode || data.partyCode || '').toUpperCase().trim();
+      const user = currentUser || (data.senderId ? { userId: data.senderId, name: data.senderName || 'User', avatar: data.senderAvatar || '' } : null);
+      if (!code || !user) {
+        if (callback) callback({ success: false, error: 'Party code or user missing' });
+        return;
+      }
+
+      if (!currentPartyCode) {
+        currentPartyCode = code;
+        socket.join(code);
+      }
+      if (!currentUser) {
+        currentUser = user;
+      }
+
+      let room = activeRooms.get(code);
+      if (!room) {
+        room = getOrCreateMemoryParty(code, { hostId: user.userId, hostName: user.name });
+      }
 
       const messageObj = {
         id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        partyCode: currentPartyCode,
-        senderId: currentUser.userId,
-        senderName: currentUser.name,
-        senderAvatar: currentUser.avatar || '',
+        partyCode: code,
+        senderId: user.userId,
+        senderName: user.name,
+        senderAvatar: user.avatar || '',
         text: (data.text || '').trim(),
         type: data.type || 'chat',
         stickerUrl: data.stickerUrl || null,
@@ -286,7 +320,7 @@ export function registerPartySocket(io) {
       if (room.messages.length > 200) room.messages.shift();
       recordGlobalChatMessage(messageObj);
 
-      io.to(currentPartyCode).emit('chat:message', messageObj);
+      io.to(code).emit('chat:message', messageObj);
 
       if (isDbConnected()) {
         try {
@@ -405,56 +439,89 @@ export function registerPartySocket(io) {
       });
     });
 
-    // 5. DISCONNECT / LEAVE
-    const handleLeave = () => {
-      if (!currentPartyCode || !currentUser) return;
-      const room = activeRooms.get(currentPartyCode);
+    // 5. DISCONNECT / LEAVE with Grace Period
+    const executeMemberLeave = (partyCode, user, socketId, isExplicit = false) => {
+      const timerKey = `${partyCode}:${user.userId}`;
+      if (disconnectTimers.has(timerKey)) {
+        clearTimeout(disconnectTimers.get(timerKey));
+        disconnectTimers.delete(timerKey);
+      }
+
+      const room = activeRooms.get(partyCode);
       if (!room) return;
 
-      room.members = room.members.filter(m => m.userId !== currentUser.userId);
-      room.voiceParticipants.delete(currentUser.userId);
+      room.members = room.members.filter(m => m.userId !== user.userId);
+      room.voiceParticipants.delete(user.userId);
 
-      if (room.hostId === currentUser.userId && room.members.length > 0) {
+      if (room.hostId === user.userId && room.members.length > 0) {
         room.hostId = room.members[0].userId;
         room.hostName = room.members[0].name;
         room.members[0].isHost = true;
       }
 
-      io.to(currentPartyCode).emit('party:member-left', {
-        userId: currentUser.userId,
-        name: currentUser.name,
+      io.to(partyCode).emit('party:member-left', {
+        userId: user.userId,
+        name: user.name,
         newHostId: room.hostId,
         totalMembers: room.members.length
       });
 
-      io.to(currentPartyCode).emit('voice:user-left', {
-        userId: currentUser.userId,
-        socketId: socket.id
+      io.to(partyCode).emit('voice:user-left', {
+        userId: user.userId,
+        socketId: socketId
       });
 
-      const leaveMsg = {
-        id: `sys-${Date.now()}`,
-        partyCode: currentPartyCode,
-        senderId: 'system',
-        senderName: 'System',
-        text: `${currentUser.name} left the watch party`,
-        type: 'system',
-        timestamp: new Date().toISOString()
-      };
-      io.to(currentPartyCode).emit('chat:message', leaveMsg);
+      if (isExplicit) {
+        const leaveMsg = {
+          id: `sys-${Date.now()}`,
+          partyCode: partyCode,
+          senderId: 'system',
+          senderName: 'System',
+          text: `${user.name} left the watch party`,
+          type: 'system',
+          timestamp: new Date().toISOString()
+        };
+        io.to(partyCode).emit('chat:message', leaveMsg);
+      }
 
       if (room.members.length === 0) {
         setTimeout(() => {
-          const fresh = activeRooms.get(currentPartyCode);
+          const fresh = activeRooms.get(partyCode);
           if (fresh && fresh.members.length === 0) {
-            activeRooms.delete(currentPartyCode);
+            activeRooms.delete(partyCode);
           }
         }, 15 * 60 * 1000);
       }
     };
 
-    socket.on('party:leave', handleLeave);
-    socket.on('disconnect', handleLeave);
+    socket.on('party:leave', () => {
+      if (!currentPartyCode || !currentUser) return;
+      executeMemberLeave(currentPartyCode, currentUser, socket.id, true);
+      currentPartyCode = null;
+    });
+
+    socket.on('disconnect', () => {
+      if (!currentPartyCode || !currentUser) return;
+      const code = currentPartyCode;
+      const user = currentUser;
+      const sId = socket.id;
+      const timerKey = `${code}:${user.userId}`;
+
+      // 45-second grace period before removing member to allow seamless browser tab switch / sidebar toggle
+      const timer = setTimeout(() => {
+        const room = activeRooms.get(code);
+        if (room) {
+          const member = room.members.find(m => m.userId === user.userId);
+          // If member hasn't reconnected with a newer active socket
+          if (member && member.socketId === sId) {
+            executeMemberLeave(code, user, sId, false);
+          }
+        }
+        disconnectTimers.delete(timerKey);
+      }, 45000);
+
+      disconnectTimers.set(timerKey, timer);
+    });
   });
 }
 

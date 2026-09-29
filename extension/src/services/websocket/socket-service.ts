@@ -6,6 +6,8 @@ type EventHandler<T> = (data: T) => void;
 class SocketService {
   private socket: Socket | null = null;
   private url: string;
+  private lastPartyCode: string | null = null;
+  private lastUser: User | null = null;
   private statusListeners: Set<(status: ConnectionStatus) => void> = new Set();
   private playListeners: Set<EventHandler<SyncEventPayload>> = new Set();
   private pauseListeners: Set<EventHandler<SyncEventPayload>> = new Set();
@@ -14,9 +16,13 @@ class SocketService {
   private memberJoinedListeners: Set<EventHandler<{ member: Member; totalMembers: number }>> = new Set();
   private memberLeftListeners: Set<EventHandler<{ userId: string; name: string; newHostId?: string; totalMembers: number }>> = new Set();
   private voiceJoinedListeners: Set<EventHandler<{ userId: string; name: string; socketId: string }>> = new Set();
-  private voiceLeftListeners: Set<EventHandler<{ userId: string }>> = new Set();
+  private voiceLeftListeners: Set<EventHandler<{ userId: string; socketId?: string }>> = new Set();
   private voiceSpeakingListeners: Set<EventHandler<{ userId: string; isSpeaking: boolean }>> = new Set();
   private voiceStateListeners: Set<EventHandler<{ userId: string; isMuted: boolean; isSpeaking: boolean }>> = new Set();
+  private voiceParticipantsListeners: Set<EventHandler<{ participants: Array<{ socketId: string; userId: string; name: string }> }>> = new Set();
+  private voiceOfferListeners: Set<EventHandler<{ fromSocketId: string; fromUserId?: string; offer: RTCSessionDescriptionInit }>> = new Set();
+  private voiceAnswerListeners: Set<EventHandler<{ fromSocketId: string; fromUserId?: string; answer: RTCSessionDescriptionInit }>> = new Set();
+  private voiceCandidateListeners: Set<EventHandler<{ fromSocketId: string; candidate: RTCIceCandidateInit }>> = new Set();
   private mediaUpdateListeners: Set<EventHandler<any>> = new Set();
 
   constructor() {
@@ -32,13 +38,16 @@ class SocketService {
 
     this.socket = io(this.url, {
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 15,
       reconnectionDelay: 1000,
       timeout: 10000
     });
 
     this.socket.on('connect', () => {
       this.notifyStatus('connected');
+      if (this.lastPartyCode && this.lastUser) {
+        this.socket?.emit('party:join', { partyCode: this.lastPartyCode, user: this.lastUser });
+      }
     });
 
     this.socket.on('connect_error', () => {
@@ -98,6 +107,22 @@ class SocketService {
       this.voiceStateListeners.forEach(cb => cb(data));
     });
 
+    this.socket.on('voice:existing-participants', (data) => {
+      this.voiceParticipantsListeners.forEach(cb => cb(data));
+    });
+
+    this.socket.on('voice:signal:offer', (data) => {
+      this.voiceOfferListeners.forEach(cb => cb(data));
+    });
+
+    this.socket.on('voice:signal:answer', (data) => {
+      this.voiceAnswerListeners.forEach(cb => cb(data));
+    });
+
+    this.socket.on('voice:signal:candidate', (data) => {
+      this.voiceCandidateListeners.forEach(cb => cb(data));
+    });
+
     return this.socket;
   }
 
@@ -106,6 +131,9 @@ class SocketService {
   }
 
   public joinParty(partyCode: string, user: User): Promise<{ success: boolean; party?: Party; messages?: ChatMessage[]; error?: string }> {
+    this.lastPartyCode = partyCode;
+    this.lastUser = user;
+
     return new Promise((resolve) => {
       if (!this.socket || !this.socket.connected) {
         this.connect();
@@ -118,6 +146,7 @@ class SocketService {
   }
 
   public leaveParty(): void {
+    this.lastPartyCode = null;
     if (this.socket) {
       this.socket.emit('party:leave');
     }
@@ -141,13 +170,27 @@ class SocketService {
 
   public sendMessage(text: string, type: 'chat' | 'sticker' = 'chat', stickerUrl?: string): Promise<{ success: boolean; message?: ChatMessage }> {
     return new Promise((resolve) => {
-      this.socket?.emit('chat:message', { text, type, stickerUrl }, (res: any) => {
-        resolve(res || { success: false });
+      if (!this.socket || !this.socket.connected) {
+        this.connect();
+      }
+      const payload = {
+        text,
+        type,
+        stickerUrl,
+        partyCode: this.lastPartyCode,
+        senderId: this.lastUser?.userId,
+        senderName: this.lastUser?.name
+      };
+      this.socket?.emit('chat:message', payload, (res: any) => {
+        resolve(res || { success: true });
       });
     });
   }
 
   public joinVoice(): void {
+    if (!this.socket || !this.socket.connected) {
+      this.connect();
+    }
     this.socket?.emit('voice:join');
   }
 
@@ -161,6 +204,18 @@ class SocketService {
 
   public setVoiceSpeaking(isSpeaking: boolean): void {
     this.socket?.emit('voice:speaking', isSpeaking);
+  }
+
+  public sendVoiceOffer(toSocketId: string, offer: RTCSessionDescriptionInit): void {
+    this.socket?.emit('voice:signal:offer', { toSocketId, offer });
+  }
+
+  public sendVoiceAnswer(toSocketId: string, answer: RTCSessionDescriptionInit): void {
+    this.socket?.emit('voice:signal:answer', { toSocketId, answer });
+  }
+
+  public sendVoiceCandidate(toSocketId: string, candidate: RTCIceCandidateInit): void {
+    this.socket?.emit('voice:signal:candidate', { toSocketId, candidate });
   }
 
   // Listener registrations
@@ -204,7 +259,7 @@ class SocketService {
     return () => this.voiceJoinedListeners.delete(callback);
   }
 
-  public onVoiceLeft(callback: EventHandler<{ userId: string }>): () => void {
+  public onVoiceLeft(callback: EventHandler<{ userId: string; socketId?: string }>): () => void {
     this.voiceLeftListeners.add(callback);
     return () => this.voiceLeftListeners.delete(callback);
   }
@@ -217,6 +272,26 @@ class SocketService {
   public onVoiceStateChange(callback: EventHandler<{ userId: string; isMuted: boolean; isSpeaking: boolean }>): () => void {
     this.voiceStateListeners.add(callback);
     return () => this.voiceStateListeners.delete(callback);
+  }
+
+  public onVoiceParticipants(callback: EventHandler<{ participants: Array<{ socketId: string; userId: string; name: string }> }>): () => void {
+    this.voiceParticipantsListeners.add(callback);
+    return () => this.voiceParticipantsListeners.delete(callback);
+  }
+
+  public onVoiceOffer(callback: EventHandler<{ fromSocketId: string; fromUserId?: string; offer: RTCSessionDescriptionInit }>): () => void {
+    this.voiceOfferListeners.add(callback);
+    return () => this.voiceOfferListeners.delete(callback);
+  }
+
+  public onVoiceAnswer(callback: EventHandler<{ fromSocketId: string; fromUserId?: string; answer: RTCSessionDescriptionInit }>): () => void {
+    this.voiceAnswerListeners.add(callback);
+    return () => this.voiceAnswerListeners.delete(callback);
+  }
+
+  public onVoiceCandidate(callback: EventHandler<{ fromSocketId: string; candidate: RTCIceCandidateInit }>): () => void {
+    this.voiceCandidateListeners.add(callback);
+    return () => this.voiceCandidateListeners.delete(callback);
   }
 
   public onMediaUpdate(callback: EventHandler<any>): () => void {
@@ -237,3 +312,4 @@ class SocketService {
 }
 
 export const socketService = new SocketService();
+

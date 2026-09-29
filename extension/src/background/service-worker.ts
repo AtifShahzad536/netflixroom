@@ -28,6 +28,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
 
+  if (message.type === 'OPEN_PERMISSION_TAB') {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL('permission.html'),
+      active: true
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.type === 'CHECK_NETFLIX_TAB') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
